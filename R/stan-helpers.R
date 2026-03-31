@@ -118,14 +118,15 @@ stan_slice <- function(threads) {
   str_if(use_threading(threads), "[start:end]")
 }
 
-stan_nn <- function(threads, subsample = NULL) {
+stan_nn <- function(threads) {
   if (use_threading(threads)) return("[nn]")
-  if (use_subsampling(subsample)) return("[nn]")
+  if (use_subsampling(threads$subsample)) return("[nn]")
   "[n]"
 }
 
-stan_nn_def <- function(threads, subsample = NULL) {
+stan_nn_def <- function(threads) {
   if (use_threading(threads)) return("    int nn = n + start - 1;\n")
+  subsample <- threads$subsample
   if (use_subsampling(subsample)) {
     return(glue("    int nn = {subsample$index_fn}(n);\n"))
   }
@@ -138,8 +139,9 @@ stan_nn_regex <- function() {
 
 # expression for the number of observations, subsample-aware
 # @param resp response suffix (possibly empty)
-# @param subsample a brmssubsample object or NULL
-stan_N_expr <- function(resp = "", subsample = NULL) {
+# @param threads a brmsthreads object (may carry $subsample)
+stan_N_expr <- function(resp = "", threads = NULL) {
+  subsample <- threads$subsample
   if (use_subsampling(subsample)) {
     glue("{subsample$size_fn}()")
   } else {
@@ -149,9 +151,10 @@ stan_N_expr <- function(resp = "", subsample = NULL) {
 
 # wrap a Stan variable with a subsample getter function
 # @param var_expr Stan variable expression (e.g. "Xc", "Y")
-# @param subsample a brmssubsample object or NULL
+# @param threads a brmsthreads object (may carry $subsample)
 # @return wrapped expression if a matching wrap entry exists, else unchanged
-stan_subsample_wrap <- function(var_expr, subsample = NULL) {
+stan_subsample_wrap <- function(var_expr, threads = NULL) {
+  subsample <- threads$subsample
   if (!use_subsampling(subsample) || length(subsample$wrap) == 0) {
     return(var_expr)
   }

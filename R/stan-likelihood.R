@@ -27,15 +27,15 @@ stan_log_lik.mvbrmsterms <- function(x, ...) {
 }
 
 # Stan code for the log likelihood of a regular family
-stan_log_lik_family <- function(bterms, threads, subsample = NULL, ...) {
+stan_log_lik_family <- function(bterms, threads, ...) {
   stopifnot(is.brmsterms(bterms))
   # prepare family part of the likelihood
-  log_lik_args <- nlist(bterms, threads, subsample, ...)
+  log_lik_args <- nlist(bterms, threads, ...)
   log_lik_fun <- prepare_family(bterms)$fun
   log_lik_fun <- paste0("stan_log_lik_", log_lik_fun)
   ll <- do_call(log_lik_fun, log_lik_args)
   # incorporate other parts into the likelihood
-  args <- nlist(ll, bterms, threads, subsample, ...)
+  args <- nlist(ll, bterms, threads, ...)
   mix <- get_mix_id(bterms)
   if (nzchar(mix)) {
     out <- do_call(stan_log_lik_mix, args)
@@ -49,10 +49,10 @@ stan_log_lik_family <- function(bterms, threads, subsample = NULL, ...) {
   if (grepl(stan_nn_regex(), out) && !nzchar(mix)) {
     # loop over likelihood if it cannot be vectorized
     resp <- usc(bterms$resp)
-    N_expr <- stan_N_expr(resp, subsample)
+    N_expr <- stan_N_expr(resp, threads)
     out <- paste0(
       "  for (n in 1:", N_expr, ") {\n",
-      stan_nn_def(threads, subsample),
+      stan_nn_def(threads),
       "  ", out,
       "  }\n"
     )
@@ -95,11 +95,10 @@ stan_log_lik_mixfamily <- function(bterms, threads, ...) {
 }
 
 # default likelihood in Stan language
-stan_log_lik_general <- function(ll, bterms, threads, normalize,
-                                 subsample = NULL, ...) {
+stan_log_lik_general <- function(ll, bterms, threads, normalize, ...) {
   stopifnot(is.sdist(ll))
   require_n <- grepl(stan_nn_regex(), ll$args)
-  n <- str_if(require_n, stan_nn(threads, subsample), stan_slice(threads))
+  n <- str_if(require_n, stan_nn(threads), stan_slice(threads))
   lpdf <- stan_log_lik_lpdf_name(bterms, normalize, dist = ll$dist)
   Y <- stan_log_lik_Y_name(bterms)
   resp <- usc(bterms$resp)
@@ -107,7 +106,7 @@ stan_log_lik_general <- function(ll, bterms, threads, normalize,
   # only wrap Y for vectorized paths; per-observation Y[nn] uses
   # the global index directly and does not need wrapping
   if (!require_n) {
-    Y_ref <- stan_subsample_wrap(Y_ref, subsample)
+    Y_ref <- stan_subsample_wrap(Y_ref, threads)
   }
   tr <- stan_log_lik_trunc(ll, bterms, threads = threads, ...)
   glue("{tp()}{ll$dist}_{lpdf}({Y_ref}{ll$shift} | {ll$args}){tr};\n")
@@ -1341,7 +1340,7 @@ use_glm_primitive_categorical <- function(bterms) {
 # standard arguments for primitive Stan GLM functions
 # @param bterms a btl object
 # @return a named list of Stan code snippets
-args_glm_primitive <- function(bterms, threads = NULL, subsample = NULL, ...) {
+args_glm_primitive <- function(bterms, threads = NULL, ...) {
   stopifnot(is.btl(bterms))
   resp <- usc(bterms$resp)
   decomp <- get_decomp(bterms$fe)
@@ -1358,7 +1357,7 @@ args_glm_primitive <- function(bterms, threads = NULL, subsample = NULL, ...) {
     sfx_X <- glue("{sfx_X}_{bterms$dpar}")
   }
   x <- glue("X{sfx_X}{resp}{slice}")
-  x <- stan_subsample_wrap(x, subsample)
+  x <- stan_subsample_wrap(x, threads)
   beta <- glue("b{sfx_b}{resp}")
   if (has_special_terms(bterms)) {
     # the intercept vector will contain all the remaining terms
